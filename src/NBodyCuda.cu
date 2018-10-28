@@ -97,7 +97,7 @@ void NBodyTimestepCuda(struct body* bodies, double rx, double ry, bool cursor)
 	double delta_t = 1e-3;
 	double a[NUM_BODIES][2];
 	memset(a, 0, sizeof(a));
-	// here we use the antisymmetry of [Fij] to save computation;
+	// here we use the antisymmetry property of [Fij] to save computation;
 	for(int i = 0; i < NUM_BODIES; i++)
     {
 	    for(int j = i+1; j < NUM_BODIES; j++)
@@ -115,6 +115,8 @@ void NBodyTimestepCuda(struct body* bodies, double rx, double ry, bool cursor)
 			double xic = rx - bodies[i].x;
 			double yic = ry - bodies[i].y;
 			double dic3 = pow(pow(xic, 2) + pow(yic, 2), 1.5) + eps;
+			// to make the effect of cursor evident, we enlarge the accleration
+			// caused by cursor
 			a[i][0] += 1e7 * G * cursor_weight / dic3 * xic;
 			a[i][1] += 1e7 * G * cursor_weight / dic3 * yic;
 		}
