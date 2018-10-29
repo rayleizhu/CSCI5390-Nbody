@@ -23,9 +23,9 @@ struct body
 
 
 // function definitions for the main procedure
-void rasterize(struct body* bodies, unsigned char* buffer);
-struct body* initializeNBodyCuda();
-void freeMem(struct body* bodies);
-void NBodyTimestepCuda(struct body* bodies, double rx, double ry, bool cursor);
+void rasterize(struct body* d_bodies, unsigned char* d_buffer, unsigned char* h_buffer);
+void initializeNBodyCuda(struct body* &d_bodies, unsigned char* &d_buffer);
+void freeMem(struct body* d_bodies, unsigned char* d_buffer);
+void NBodyTimestepCuda(struct body* d_bodies, double rx, double ry, bool cursor);
 
 #endif

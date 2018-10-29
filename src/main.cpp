@@ -77,7 +77,9 @@ int main(int argc, char *argv[])
 		memset(canvas, 0, SCREEN_WIDTH*SCREEN_HEIGHT * 3 * sizeof(unsigned char));
 
 		// initialize N-bodies
-		struct body *bodies = initializeNBodyCuda();
+		struct body *d_bodies = NULL;
+		unsigned char *d_buffer = NULL;
+		initializeNBodyCuda(d_bodies, d_buffer);
 
 		
 		// the FPS indicator
@@ -139,8 +141,8 @@ int main(int argc, char *argv[])
 			rx = rx * 2 - 1;
 			ry = ry * 2 - 1;
 
-			NBodyTimestepCuda(bodies,rx,ry,cursor);
-			rasterize(bodies, canvas);
+			NBodyTimestepCuda(d_bodies,rx,ry,cursor);
+			rasterize(d_bodies, d_buffer, canvas);
 
 			canvasTexture.createFromBuffer(SCREEN_WIDTH, SCREEN_HEIGHT, canvas);
 			canvasTexture.render(0, 0);
@@ -169,7 +171,7 @@ int main(int argc, char *argv[])
 
 			frameCount++;
 		}
-		freeMem(bodies);
+		freeMem(d_bodies, d_buffer);
 	}
 
 
