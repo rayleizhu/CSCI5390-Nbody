@@ -3,6 +3,7 @@
 #include <string>
 #include <sstream>
 #include <time.h>
+#include <cuda_runtime_api.h>
 
 #include "main.h"
 #include "LTexture.h"
@@ -106,7 +107,7 @@ int main(int argc, char *argv[])
 		//While application is running
 		while (!quit)
 		{
-			
+
 			//Handle events on queue
 			while (SDL_PollEvent(&e) != 0)
 			{
@@ -137,7 +138,7 @@ int main(int argc, char *argv[])
 			ry = (double)(x) / (double)(SCREEN_HEIGHT);
 			rx = rx * 2 - 1;
 			ry = ry * 2 - 1;
-			
+
 			NBodyTimestepCuda(bodies,rx,ry,cursor);
 			rasterize(bodies, canvas);
 
@@ -147,7 +148,7 @@ int main(int argc, char *argv[])
 
 			// set the FPS counter
 			SDL_Color textColor = { 255, 0 , 0};
-			
+
 			if (SDL_GetTicks() - startTime > 500)
 			{
 				fps = frameCount * 2;
@@ -162,12 +163,13 @@ int main(int argc, char *argv[])
 			gTextTexture.loadFromRenderedText(timeText.str().c_str(), textColor);
 			gTextTexture.render(0, 0);
 
-			
+
 			//Update screen
 			SDL_RenderPresent(renderer);
 
 			frameCount++;
 		}
+		freeMem(bodies);
 	}
 
 

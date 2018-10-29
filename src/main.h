@@ -8,7 +8,7 @@ const int SCREEN_HEIGHT = 480;
 
 // numbers of bodies in the simulation 
 //const int NUM_BODIES = 8192;
-const int NUM_BODIES = 512;
+const int NUM_BODIES = 1024;
 
 // the body structure
 struct body
@@ -25,6 +25,7 @@ struct body
 // function definitions for the main procedure
 void rasterize(struct body* bodies, unsigned char* buffer);
 struct body* initializeNBodyCuda();
+void freeMem(struct body* bodies);
 void NBodyTimestepCuda(struct body* bodies, double rx, double ry, bool cursor);
 
 #endif
