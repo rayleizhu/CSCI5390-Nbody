@@ -64,7 +64,7 @@ void rasterize(struct body* d_bodies, unsigned char* d_buffer, unsigned char* h_
     dim3 gridShape(1, SCREEN_HEIGHT);
     dim3 blockShape((SCREEN_WIDTH + gridShape.x - 1) / gridShape.x,
                     (SCREEN_HEIGHT + gridShape.y - 1) / gridShape.y);
-    addTrail<<<gridShape, blockShape>>>(d_buffer, 0.98, SCREEN_WIDTH, SCREEN_HEIGHT);
+    addTrail<<<gridShape, blockShape>>>(d_buffer, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
 
     // update frame
     unsigned int groupSize = 8;
@@ -114,91 +114,80 @@ void freeMem(struct body* d_bodies, unsigned char* d_buffer)
 }
 
 
-__global__ void updateBodies(struct body* d_bodies,
+// TODO: use the anti-symmetry property of force matrix to reduce computation
+__global__ void scalableUpdate(struct body* d_bodies,
         double dt,
         double rx,
         double ry,
-        bool cursor)
+        bool cursor,
+        unsigned int num_bodies)
 {
-    __shared__ double ax[NUM_BODIES], ay[NUM_BODIES];
-    unsigned int bid = blockIdx.x;
-    unsigned int tid = threadIdx.x;
+    double ax=0, ay=0;
+    unsigned int offset = blockIdx.x * blockDim.x + threadIdx.x;
+    if(offset >= num_bodies) return;
 
-    // initialization
-    ax[tid] = 0;
-    ay[tid] = 0;
-    __syncthreads();
+    double vx = d_bodies[offset].vx;
+    double vy = d_bodies[offset].vy;
+    double x = d_bodies[offset].x;
+    double y = d_bodies[offset].y;
 
-
-    if(tid != bid) 
-	{
-        double dx = d_bodies[tid].x - d_bodies[bid].x;
-        double dy = d_bodies[tid].y - d_bodies[bid].y;
-        double dist3 = pow(dx * dx + dy * dy, 1.5) + eps;
-        ax[tid] = G * d_bodies[tid].m / dist3 * dx;
-        ay[tid] = G * d_bodies[tid].m / dist3 * dy;
-	}
-	__syncthreads();
-    /* TODO: here we assume NUM_BODIES is 2^k for some k,
-      or else we need extra judgement for reduction */
-	for (unsigned int s = NUM_BODIES >> 1; s > 0; s >>= 1)
-	{
-		if (tid < s)
-		{
-			ax[tid] += ax[tid + s];
-			ay[tid] += ay[tid + s];
-		}
-		__syncthreads();
-	}
-    
-    // TODO: try seperate the following code to another kernel
-    // because in remaining part, there is only one thread alive on blocks
-    if(tid == 0)
+    // this part can be accelerated
+    for(unsigned int j = 0; j < num_bodies; j++)
     {
-        if(cursor)
-        {
-            double dx = rx - d_bodies[bid].x;
-            double dy = ry - d_bodies[bid].y;
-            double dist3 = pow(dx * dx + dy * dy, 1.5) + eps;
-            // magnify the effect of cursor
-            ax[0] += 1e7 * G * cursor_weight / dist3 * dx;
-            ay[0] += 1e7 * G * cursor_weight / dist3 * dy;
-        }
-        double vx = d_bodies[bid].vx + ax[0] * dt;
-        double vy = d_bodies[bid].vy + ay[0] * dt;
-        double x = d_bodies[bid].x + vx * dt;
-        double y = d_bodies[bid].y + vy * dt;
-        // after collsision, the actual positon should
-        // be symmetric correspoding to boundary
-        // here we assume the velocity won't be too large,
-        // so at most one collision can happen between two frames
-        if(x > 1.0)
-        {
-           vx *= -collision_damping;
-           // more precicsely, x = 1.6 - 0.6*x;
-           x = 2.0 - x;
-        }
-        else if(x < -1.0)
-        {
-            vx *= -collision_damping;
-            x = -2.0 -x;
-        }
-        if(y > 1.0)
-        {
-            vy *= -collision_damping;
-            y = 2.0 - y;
-        }
-        else if(y < -1.0)
-        {
-            vy *= -collision_damping;
-            y = -2.0 -y;
-        }
-        d_bodies[bid].x = x;
-        d_bodies[bid].y = y;
-        d_bodies[bid].vx = vx;
-        d_bodies[bid].vy = vy;
+        double dx = d_bodies[j].x - d_bodies[offset].x;
+        double dy = d_bodies[j].y - d_bodies[offset].y;
+        double dist3 = pow(dx * dx + dy * dy, 1.5) + eps;
+        ax += G * d_bodies[j].m / dist3 * dx;
+        ay += G * d_bodies[j].m / dist3 * dy;
     }
+
+    if(cursor)
+    {
+        double dx = rx - d_bodies[offset].x;
+        double dy = ry - d_bodies[offset].y;
+        double dist3 = pow(dx * dx + dy * dy, 1.5) + eps;
+        // magnify the effect of cursor
+        ax += 1e7 * G * cursor_weight / dist3 * dx;
+        ay += 1e7 * G * cursor_weight / dist3 * dy;
+    }
+
+    vx += ax * dt;
+    vy += ay * dt;
+    x += vx * dt;
+    y += vy * dt;
+    // after collsision, the actual positon should
+    // be symmetric correspoding to boundary
+    // here we assume the velocity won't be too large,
+    // so at most one collision can happen between two frames
+    // otherwise we need a for loop here
+    if(x > 1.0)
+    {
+        vx *= -collision_damping;
+        // more precicsely, x = 1.6 - 0.6*x;
+        x = 2.0 - x;
+    }
+    else if(x < -1.0)
+    {
+        vx *= -collision_damping;
+        x = -2.0 -x;
+    }
+    if(y > 1.0)
+    {
+        vy *= -collision_damping;
+        y = 2.0 - y;
+    }
+    else if(y < -1.0)
+    {
+        vy *= -collision_damping;
+        y = -2.0 -y;
+    }
+    d_bodies[offset].x = x;
+    d_bodies[offset].y = y;
+    d_bodies[offset].vx = vx;
+    d_bodies[offset].vy = vy;
 }
+
+
 
 void NBodyTimestepCuda(struct body* d_bodies, double rx, double ry, bool cursor)
 {
@@ -209,8 +198,7 @@ void NBodyTimestepCuda(struct body* d_bodies, double rx, double ry, bool cursor)
     \param ry position y of the cursor.
     \param cursor Enable the mouse interaction if true (adding a weight = cursor_weight body in the computation).
     */
-    // TODO: current version has low scalability, try to write new kernel to hadle more bodies
-    assert(NUM_BODIES <= 1024);
     double dt = 1e-3;
-    updateBodies<<<NUM_BODIES, NUM_BODIES>>>(d_bodies, dt, rx, ry, cursor);
+    int blockSize = 256;
+    scalableUpdate<<<(NUM_BODIES + blockSize - 1) / blockSize, blockSize>>>(d_bodies, dt, rx, ry, cursor, NUM_BODIES);
 }

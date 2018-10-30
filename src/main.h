@@ -8,7 +8,7 @@ const int SCREEN_HEIGHT = 480;
 
 // numbers of bodies in the simulation 
 //const int NUM_BODIES = 8192;
-const int NUM_BODIES = 1024;
+const int NUM_BODIES = 2048;
 
 // the body structure
 struct body
