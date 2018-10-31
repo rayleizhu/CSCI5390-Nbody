@@ -10,6 +10,7 @@
 #include <cuda_runtime.h>
 #include <cassert>
 
+const float frame_decay = 0.95;
 
 float getRandom(float min, float max)
 {
@@ -26,6 +27,7 @@ __global__ void addTrail(unsigned char* d_buffer,
     unsigned int x = blockIdx.x * blockDim.x + threadIdx.x;
     unsigned int y = blockIdx.y * blockDim.y + threadIdx.y;
     if(x >= screen_width || y >= screen_height) return;
+
     d_buffer[x * screen_height * 3 + y * 3 + 0] *= decay;
     d_buffer[x * screen_height * 3 + y * 3 + 1] *= decay;
     d_buffer[x * screen_height * 3 + y * 3 + 2] *= decay;
@@ -64,11 +66,11 @@ void rasterize(struct body* d_bodies, unsigned char* d_buffer, unsigned char* h_
     dim3 gridShape(1, SCREEN_HEIGHT);
     dim3 blockShape((SCREEN_WIDTH + gridShape.x - 1) / gridShape.x,
                     (SCREEN_HEIGHT + gridShape.y - 1) / gridShape.y);
-    addTrail<<<gridShape, blockShape>>>(d_buffer, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+    addTrail<<<gridShape, blockShape>>>(d_buffer, frame_decay, SCREEN_WIDTH, SCREEN_HEIGHT);
 
     // update frame
-    unsigned int groupSize = 8;
-    updateFrame<<<groupSize, (NUM_BODIES + groupSize - 1) / groupSize>>>(
+    unsigned int blockSize = 256;
+    updateFrame<<<(NUM_BODIES + blockSize - 1) / blockSize, blockSize>>>(
             d_bodies, d_buffer, SCREEN_WIDTH, SCREEN_HEIGHT, NUM_BODIES);
 
     cudaMemcpy(h_buffer, d_buffer, bufferSize, cudaMemcpyDeviceToHost);
@@ -132,14 +134,23 @@ __global__ void scalableUpdate(struct body* d_bodies,
     // this part can be accelerated
     for(unsigned int i = 0; i < gridDim.x; i++)
     {
-        sbodies[threadIdx.x] = d_bodies[i * blockDim.x + threadIdx.x];
+        unsigned int idx = i * blockDim.x + threadIdx.x;
+        if(idx < num_bodies)
+        {
+            sbodies[threadIdx.x] = d_bodies[idx];
+        }
+        else
+        {
+            sbodies[threadIdx.x].m = 0.;
+        }
         __syncthreads();
         for(unsigned int j = 0; j < blockDim.x; j++)
         {
             body otherBody = sbodies[j];
             float dx = otherBody.x - myBody.x;
             float dy = otherBody.y - myBody.y;
-            float dist3 = pow(dx * dx + dy * dy, 1.5) + eps;
+            float tmp = dx * dx + dy * dy;
+            float dist3 = rsqrt(tmp*tmp*tmp) + eps;
             float coeff = G * otherBody.m / dist3;
             ax += coeff * dx;
             ay += coeff * dy;
@@ -151,7 +162,8 @@ __global__ void scalableUpdate(struct body* d_bodies,
     {
         float dx = rx - myBody.x;
         float dy = ry - myBody.y;
-        float dist3 = pow(dx * dx + dy * dy, 1.5) + eps;
+        float tmp = dx * dx + dy * dy;
+        float dist3 = rsqrt(tmp*tmp*tmp) + eps;
         // magnify the effect of cursor
         float coeff =  1e7 * G * cursor_weight / dist3;
         ax += coeff * dx;
@@ -171,22 +183,22 @@ __global__ void scalableUpdate(struct body* d_bodies,
     {
         myBody.vx *= -collision_damping;
         // more precicsely, x = 1.6 - 0.6*x;
-        myBody.x = 2.0 - myBody.x;
+        myBody.x = 1.0;
     }
     else if(myBody.x < -1.0)
     {
         myBody.vx *= -collision_damping;
-        myBody.x = -2.0 - myBody.x;
+        myBody.x = -1.0;
     }
     if(myBody.y > 1.0)
     {
         myBody.vy *= -collision_damping;
-        myBody.y = 2.0 -myBody.y;
+        myBody.y = 1.0;
     }
     else if(myBody.y < -1.0)
     {
         myBody.vy *= -collision_damping;
-        myBody.y = -2.0 - myBody.y;
+        myBody.y = -1.0;
     }
     d_bodies[offset] = myBody;
 }
@@ -204,7 +216,7 @@ void NBodyTimestepCuda(struct body* d_bodies, float rx, float ry, bool cursor)
     */
     float dt = 1e-3;
     int blockSize = 256;
-    int gridSize =  (NUM_BODIES + blockSize - 1) / blockSize;
+    int gridSize = (NUM_BODIES + blockSize - 1) / blockSize;
     unsigned int ssize = blockSize * sizeof(struct body);
     scalableUpdate<<<gridSize, blockSize, ssize>>>(d_bodies, dt, rx, ry, cursor, NUM_BODIES);
 }
