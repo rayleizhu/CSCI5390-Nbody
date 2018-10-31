@@ -11,14 +11,14 @@
 #include <cassert>
 
 
-double getRandom(double min, double max)
+float getRandom(float min, float max)
 {
-	double r = (double)rand() / RAND_MAX;
+	float r = (float)rand() / RAND_MAX;
 	return r*(max - min) + min;
 }
 
 __global__ void addTrail(unsigned char* d_buffer,
-        const double decay,
+        const float decay,
         const unsigned int screen_width,
         const unsigned int screen_height)
 
@@ -116,80 +116,84 @@ void freeMem(struct body* d_bodies, unsigned char* d_buffer)
 
 // TODO: use the anti-symmetry property of force matrix to reduce computation
 __global__ void scalableUpdate(struct body* d_bodies,
-        double dt,
-        double rx,
-        double ry,
+        float dt,
+        float rx,
+        float ry,
         bool cursor,
         unsigned int num_bodies)
 {
-    double ax=0, ay=0;
+    extern __shared__ body sbodies[];
+    float ax=0, ay=0;
     unsigned int offset = blockIdx.x * blockDim.x + threadIdx.x;
     if(offset >= num_bodies) return;
 
-    double vx = d_bodies[offset].vx;
-    double vy = d_bodies[offset].vy;
-    double x = d_bodies[offset].x;
-    double y = d_bodies[offset].y;
+    body myBody = d_bodies[offset];
 
     // this part can be accelerated
-    for(unsigned int j = 0; j < num_bodies; j++)
+    for(unsigned int i = 0; i < gridDim.x; i++)
     {
-        double dx = d_bodies[j].x - d_bodies[offset].x;
-        double dy = d_bodies[j].y - d_bodies[offset].y;
-        double dist3 = pow(dx * dx + dy * dy, 1.5) + eps;
-        ax += G * d_bodies[j].m / dist3 * dx;
-        ay += G * d_bodies[j].m / dist3 * dy;
+        sbodies[threadIdx.x] = d_bodies[i * blockDim.x + threadIdx.x];
+        __syncthreads();
+        for(unsigned int j = 0; j < blockDim.x; j++)
+        {
+            body otherBody = sbodies[j];
+            float dx = otherBody.x - myBody.x;
+            float dy = otherBody.y - myBody.y;
+            float dist3 = pow(dx * dx + dy * dy, 1.5) + eps;
+            float coeff = G * otherBody.m / dist3;
+            ax += coeff * dx;
+            ay += coeff * dy;
+        }
+        __syncthreads();
     }
 
     if(cursor)
     {
-        double dx = rx - d_bodies[offset].x;
-        double dy = ry - d_bodies[offset].y;
-        double dist3 = pow(dx * dx + dy * dy, 1.5) + eps;
+        float dx = rx - myBody.x;
+        float dy = ry - myBody.y;
+        float dist3 = pow(dx * dx + dy * dy, 1.5) + eps;
         // magnify the effect of cursor
-        ax += 1e7 * G * cursor_weight / dist3 * dx;
-        ay += 1e7 * G * cursor_weight / dist3 * dy;
+        float coeff =  1e7 * G * cursor_weight / dist3;
+        ax += coeff * dx;
+        ay += coeff * dy;
     }
 
-    vx += ax * dt;
-    vy += ay * dt;
-    x += vx * dt;
-    y += vy * dt;
+    myBody.vx += ax * dt;
+    myBody.vy += ay * dt;
+    myBody.x += myBody.vx * dt;
+    myBody.y += myBody.vy * dt;
     // after collsision, the actual positon should
     // be symmetric correspoding to boundary
     // here we assume the velocity won't be too large,
     // so at most one collision can happen between two frames
     // otherwise we need a for loop here
-    if(x > 1.0)
+    if(myBody.x > 1.0)
     {
-        vx *= -collision_damping;
+        myBody.vx *= -collision_damping;
         // more precicsely, x = 1.6 - 0.6*x;
-        x = 2.0 - x;
+        myBody.x = 2.0 - myBody.x;
     }
-    else if(x < -1.0)
+    else if(myBody.x < -1.0)
     {
-        vx *= -collision_damping;
-        x = -2.0 -x;
+        myBody.vx *= -collision_damping;
+        myBody.x = -2.0 - myBody.x;
     }
-    if(y > 1.0)
+    if(myBody.y > 1.0)
     {
-        vy *= -collision_damping;
-        y = 2.0 - y;
+        myBody.vy *= -collision_damping;
+        myBody.y = 2.0 -myBody.y;
     }
-    else if(y < -1.0)
+    else if(myBody.y < -1.0)
     {
-        vy *= -collision_damping;
-        y = -2.0 -y;
+        myBody.vy *= -collision_damping;
+        myBody.y = -2.0 - myBody.y;
     }
-    d_bodies[offset].x = x;
-    d_bodies[offset].y = y;
-    d_bodies[offset].vx = vx;
-    d_bodies[offset].vy = vy;
+    d_bodies[offset] = myBody;
 }
 
 
 
-void NBodyTimestepCuda(struct body* d_bodies, double rx, double ry, bool cursor)
+void NBodyTimestepCuda(struct body* d_bodies, float rx, float ry, bool cursor)
 {
     /**
     Compute a time step on the CUDA device.
@@ -198,7 +202,9 @@ void NBodyTimestepCuda(struct body* d_bodies, double rx, double ry, bool cursor)
     \param ry position y of the cursor.
     \param cursor Enable the mouse interaction if true (adding a weight = cursor_weight body in the computation).
     */
-    double dt = 1e-3;
+    float dt = 1e-3;
     int blockSize = 256;
-    scalableUpdate<<<(NUM_BODIES + blockSize - 1) / blockSize, blockSize>>>(d_bodies, dt, rx, ry, cursor, NUM_BODIES);
+    int gridSize =  (NUM_BODIES + blockSize - 1) / blockSize;
+    unsigned int ssize = blockSize * sizeof(struct body);
+    scalableUpdate<<<gridSize, blockSize, ssize>>>(d_bodies, dt, rx, ry, cursor, NUM_BODIES);
 }

@@ -13,12 +13,12 @@ const int NUM_BODIES = 2048;
 // the body structure
 struct body
 {
-	double x;	// the x position
-	double y;	// the y position
-	double vx;	// the x-axis velocity
-	double vy;	// the y-axis velocity
+	float x;	// the x position
+	float y;	// the y position
+	float vx;	// the x-axis velocity
+	float vy;	// the y-axis velocity
 
-	double m;	// the body mass
+	float m;	// the body mass
 };
 
 
@@ -26,6 +26,6 @@ struct body
 void rasterize(struct body* d_bodies, unsigned char* d_buffer, unsigned char* h_buffer);
 void initializeNBodyCuda(struct body* &d_bodies, unsigned char* &d_buffer);
 void freeMem(struct body* d_bodies, unsigned char* d_buffer);
-void NBodyTimestepCuda(struct body* d_bodies, double rx, double ry, bool cursor);
+void NBodyTimestepCuda(struct body* d_bodies, float rx, float ry, bool cursor);
 
 #endif
