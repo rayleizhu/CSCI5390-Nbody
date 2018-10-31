@@ -16,7 +16,7 @@ __constant__ double cursor_weight = 500;
 // lose speed if collide to the boundary
 __constant__ double collision_damping = 0.6;
 
-//// for cpu version, we need constant, instead of __constant__
+
 // epsilon as damping factor
 //const double eps = 0.1;
 //

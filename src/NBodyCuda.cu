@@ -8,9 +8,6 @@
 
 #include <cuda.h>
 #include <cuda_runtime.h>
-#include <cassert>
-
-const float frame_decay = 0.95;
 
 float getRandom(float min, float max)
 {
@@ -64,9 +61,8 @@ void rasterize(struct body* d_bodies, unsigned char* d_buffer, unsigned char* h_
 
     // add trail effect
     dim3 gridShape(1, SCREEN_HEIGHT);
-    dim3 blockShape((SCREEN_WIDTH + gridShape.x - 1) / gridShape.x,
-                    (SCREEN_HEIGHT + gridShape.y - 1) / gridShape.y);
-    addTrail<<<gridShape, blockShape>>>(d_buffer, frame_decay, SCREEN_WIDTH, SCREEN_HEIGHT);
+    dim3 blockShape(SCREEN_WIDTH, 1);
+    addTrail<<<gridShape, blockShape>>>(d_buffer, DECAY, SCREEN_WIDTH, SCREEN_HEIGHT);
 
     // update frame
     unsigned int blockSize = 256;
@@ -85,15 +81,35 @@ void initializeNBodyCuda(struct body * &d_bodies, unsigned char* &d_buffer)
 	// initialize the position and velocity
 	// you can implement own initial conditions to form a sprial/ellipse galaxy, have fun.
 	struct body* h_bodies = new struct body[NUM_BODIES];
-	for(int i = 0; i < NUM_BODIES; i++)
+	if(RANDOM)
     {
-		h_bodies[i].x = getRandom(-1.0, 1.0);
-        h_bodies[i].y = getRandom(-1.0, 1.0);
-        h_bodies[i].vx = getRandom(-1.0, 1.0);
-        h_bodies[i].vy = getRandom(-1.0, 1.0);
-        //bodies[i].vx = 0;
-        //bodies[i].vy = 0;
-        h_bodies[i].m = getRandom(1e5, 1e7);
+        for(int i = 0; i < NUM_BODIES; i++)
+        {
+            h_bodies[i].x = getRandom(-1.0, 1.0);
+            h_bodies[i].y = getRandom(-1.0, 1.0);
+            h_bodies[i].vx = getRandom(-1.0, 1.0);
+            h_bodies[i].vy = getRandom(-1.0, 1.0);
+            //bodies[i].vx = 0;
+            //bodies[i].vy = 0;
+            h_bodies[i].m = getRandom(1e5, 1e7);
+        }
+    }
+    else
+    {
+        float r = 0.9;
+        float m = 1e6;
+        float a = 1e-7 * NUM_BODIES * m / (r*r);
+        float v = SLACK * sqrt(a * r);
+        float dtheta = 2*3.14159265 / NUM_BODIES;
+        for(int i = 0; i < NUM_BODIES; i++)
+        {
+            float beta = i * dtheta;
+            h_bodies[i].x = r * cos(beta);
+            h_bodies[i].y = r * sin(beta);
+            h_bodies[i].vx = v * sin(beta);
+            h_bodies[i].vy = -v * cos(beta);
+            h_bodies[i].m = m;
+        }
     }
     //d_body points to device memory
 	cudaMalloc((void**)&d_bodies, NUM_BODIES * sizeof(struct body));
@@ -149,9 +165,9 @@ __global__ void scalableUpdate(struct body* d_bodies,
             body otherBody = sbodies[j];
             float dx = otherBody.x - myBody.x;
             float dy = otherBody.y - myBody.y;
-            float tmp = dx * dx + dy * dy;
-            float dist3 = rsqrt(tmp*tmp*tmp) + eps;
-            float coeff = G * otherBody.m / dist3;
+            float rs = rsqrt(dx * dx + dy * dy + eps); //1/sqrt(r^2 + eps)
+            float dist3 = rs*rs*rs;
+            float coeff = G * otherBody.m * dist3;
             ax += coeff * dx;
             ay += coeff * dy;
         }
@@ -162,10 +178,10 @@ __global__ void scalableUpdate(struct body* d_bodies,
     {
         float dx = rx - myBody.x;
         float dy = ry - myBody.y;
-        float tmp = dx * dx + dy * dy;
-        float dist3 = rsqrt(tmp*tmp*tmp) + eps;
+        float rs = rsqrt(dx * dx + dy * dy + eps); //1/sqrt(r^2 + eps)
+        float dist3 = rs*rs*rs;
         // magnify the effect of cursor
-        float coeff =  1e7 * G * cursor_weight / dist3;
+        float coeff =  1e7 * G * cursor_weight * dist3;
         ax += coeff * dx;
         ay += coeff * dy;
     }
@@ -202,8 +218,6 @@ __global__ void scalableUpdate(struct body* d_bodies,
     }
     d_bodies[offset] = myBody;
 }
-
-
 
 void NBodyTimestepCuda(struct body* d_bodies, float rx, float ry, bool cursor)
 {

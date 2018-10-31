@@ -9,8 +9,45 @@
 #include "LTexture.h"
 
 
+float DECAY = 0.95;
+bool RANDOM = false;
+// note that, 0.576 is approximate to the magic constant
+// which make the circle stable for several secs
+// choose bigged or lager slack variable can produce different effects
+float SLACK = 0.8; //[0.0, 1.0]
+
 int main(int argc, char *argv[])
 {
+    if(argc > 1)
+    {
+        if(strcmp(argv[1], "random") == 0)
+        {
+            RANDOM = true;
+        }
+        else if(strcmp(argv[1], "stable") == 0)
+        {
+            RANDOM = false;
+            DECAY = 0.95;
+            SLACK = 0.576;
+        }
+        else if(strcmp(argv[1], "symmetric") == 0)
+        {
+            RANDOM = false;
+            DECAY = 0.95;
+            SLACK = 0.8;
+        }
+        else if(strcmp(argv[1], "breathe") == 0)
+        {
+            RANDOM = false;
+            DECAY = 0.95;
+            SLACK = 0.5;
+        }
+        else
+        {
+            printf("Invalid pattern! Will present default pattern (symmetric)\n");
+            printf("Usage: ./NBoudySimulation [random | stable | symmetric | breathe]\n");
+        }
+    }
 	// Initialize PRNG
 	srand((unsigned int)time(NULL));
 
