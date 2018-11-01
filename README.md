@@ -19,7 +19,7 @@ $ make -j8 && make install
 $ cd bin
 $ ./NBodySimulation [random | stable | symmetric | breathe]
 ```
-(Arguments in `[]` is optional).
+(Arguments in `[]` are optional).
 
 # Release Notes
 
