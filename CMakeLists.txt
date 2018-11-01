@@ -10,6 +10,9 @@ find_package(SDL2_ttf REQUIRED)
 
 include_directories(src ${SDL2_INCLUDE_DIR})
 
+set(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS}; -O3)
+set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS}; -Xptxas -O3;-std=c++11;)
+
 cuda_add_executable(NBodySimulation
     src/LTexture.cpp
     src/LTexture.h
