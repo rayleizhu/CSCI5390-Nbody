@@ -19,7 +19,7 @@ $ make -j8 && make install
 $ cd bin
 $ ./NBodySimulation [random | stable | symmetric | breathe]
 ```
-(Arguments in `[] is optional).
+(Arguments in `[]` is optional).
 
 # Release Notes
 
@@ -67,7 +67,5 @@ cuda kernel.
 * store intermediate results to save float-point computations.
 
 ### Acknowlegement
-Thanks [Hu Wenbo](https://github.com/crisb-DUT) for providing a cmake project file for my referrence and point
+Thanks [Hu Wenbo](https://github.com/crisb-DUT) for providing a cmake project file for my referrence and pointing
 out the problem of using pow() and rsqrt().
-
-
