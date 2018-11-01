@@ -54,7 +54,7 @@ This version is scalable and has high peroformance.
 * 60fps when doing 8096 bidies simulation on 980Ti (12-14 fps on K620).
 * support trail effect using frame decay (frame = beta * frame + newState) over time. This effect is implemented with
 cuda kernel.
-* applied cuda kernel to accllerate rasterization
+* applied cuda kernel to accelerate rasterization
 * boundary detection and  bounce back effct
 * elaborate initial state. Support command line arguments to specify pattern, i.e. choose different initial states
     * usage: ./NBodySimulation [random | stable | symmetric | breathe]
